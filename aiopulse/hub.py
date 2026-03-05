@@ -613,15 +613,25 @@ class Hub:
     async def response_parser(self):
         """Receive a response from the hub and work out what message it is."""
         _LOGGER.debug(f"{self.host}: Starting response parser")
+        consecutive_timeouts = 0
         while self.handshake.is_set():
             """Only catch exceptions that can be recovered from without reconnecting"""
             try:
                 with async_timeout.timeout(30):
                     response = await self.get_response()
+                consecutive_timeouts = 0
                 if len(response) > 0:
                     self.response_parse(response)
             except asyncio.TimeoutError:
-                _LOGGER.debug(f"{self.host}: Receive timeout, sending ping keepalive")
+                consecutive_timeouts += 1
+                if consecutive_timeouts >= 3:
+                    _LOGGER.warning(
+                        f"{self.host}: {consecutive_timeouts} consecutive "
+                        f"timeouts, forcing reconnect"
+                    )
+                    raise errors.NotConnectedException
+                _LOGGER.debug(f"{self.host}: Receive timeout ({consecutive_timeouts}/3), "
+                              f"sending ping keepalive")
                 self.protocol.send(const.HEADER + const.COMMAND_PING)
             except errors.InvalidResponseException:
                 _LOGGER.debug(f"{self.host}: Invalid response, sending ping keepalive")
