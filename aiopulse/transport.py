@@ -120,6 +120,19 @@ class HubTransportTcp(HubTransportBase):
         self.transport, _ = await loop.create_connection(
             lambda: self, self.host, self.port
         )
+
+        # Enable TCP keepalive on the socket after connection
+        sock = self.transport.get_extra_info('socket')
+        if sock:
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+            try:
+                sock.setsockopt(socket.SOL_TCP, socket.TCP_KEEPIDLE, 60)
+                sock.setsockopt(socket.SOL_TCP, socket.TCP_KEEPINTVL, 10)
+                sock.setsockopt(socket.SOL_TCP, socket.TCP_KEEPCNT, 3)
+                _LOGGER.debug(f"{self.host}: TCP keepalive enabled")
+            except (AttributeError, OSError):
+                _LOGGER.debug(f"{self.host}: TCP keepalive options not available")
+
         self.writer = asyncio.StreamWriter(
             self.transport, self.protocol, self.reader, loop
         )
@@ -188,3 +201,4 @@ class HubTransportTcp(HubTransportBase):
         """Callback when a connection is lost."""
         self.protocol.connection_lost(exc)
         super().connection_lost(exc)
+
